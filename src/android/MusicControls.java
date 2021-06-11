@@ -52,6 +52,9 @@ public class MusicControls extends CordovaPlugin {
 
 	private MediaSessionCallback mMediaSessionCallback = new MediaSessionCallback();
 
+	private ServiceConnection mConnection ;
+
+	private boolean bound;
 
 	private void registerBroadcaster(MusicControlsBroadcastReceiver mMessageReceiver){
 		final Context context = this.cordova.getActivity().getApplicationContext();
@@ -84,6 +87,7 @@ public class MusicControls extends CordovaPlugin {
 	}
 
 	public void destroyPlayerNotification(){
+		bound = false;
 		this.notification.destroy();
 	}
 
@@ -121,16 +125,18 @@ public class MusicControls extends CordovaPlugin {
 		}
 
 		// Notification Killer
-		ServiceConnection mConnection = new ServiceConnection() {
+		this.mConnection = new ServiceConnection() {
 			public void onServiceConnected(ComponentName className, IBinder binder) {
 				((KillBinder) binder).service.startService(new Intent(activity, MusicControlsNotificationKiller.class));
+				bound = true;
 			}
 			public void onServiceDisconnected(ComponentName className) {
+				bound = false;
 			}
 		};
 		Intent startServiceIntent = new Intent(activity,MusicControlsNotificationKiller.class);
 		startServiceIntent.putExtra("notificationID",this.notificationID);
-		activity.bindService(startServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
+		activity.bindService(startServiceIntent,this.mConnection, Context.BIND_AUTO_CREATE);
 	}
 
 	@Override
@@ -209,10 +215,26 @@ public class MusicControls extends CordovaPlugin {
 	}
 
 	@Override
+	public void onPause(boolean multitasking) {
+		this.notification.updateDismissable(true);
+	}
+
+	@Override
+	public void onResume(boolean multitasking) {
+		if(bound){
+			this.notification.updateDismissable(false);
+		}
+	}
+
+	@Override
 	public void onDestroy() {
 		this.notification.destroy();
 		this.mMessageReceiver.stopListening();
 		this.unregisterMediaButtonEvent();
+		if (bound) {
+			this.cordova.getActivity().unbindService(this.mConnection);
+			bound = false;
+		}
 		super.onDestroy();
 	}
 
